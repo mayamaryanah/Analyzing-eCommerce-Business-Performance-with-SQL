@@ -1,0 +1,96 @@
+
+-- 1. Monthly Active User
+-- Menampilkan rata-rata jumlah customer aktif bulanan (monthly active user) untuk setiap tahun
+WITH monthly_active_user AS (
+	SELECT 
+		year,
+		ROUND(AVG(active_user), 2) AS avg_mau
+	FROM (
+		SELECT 
+			DATE_PART('year', o.order_purchase_timestamp) AS year,
+			DATE_PART('month', o.order_purchase_timestamp) AS month,
+			COUNT(DISTINCT c.customer_unique_id) AS active_user
+		FROM orders_dataset AS o
+		JOIN customers_dataset AS c
+		ON o.customer_id = c.customer_id
+		GROUP BY 1,2
+	)monthly_active_user
+	GROUP BY 1
+	ORDER BY 1
+),
+-- Menampilkan jumlah customer baru pada masing-masing tahun 
+-- (Hint: Pelanggan baru adalah pelanggan yang melakukan order pertama kali)
+	new_customers AS (
+	SELECT 
+		DATE_PART('year', first_transaction) AS year,
+		COUNT(DISTINCT customer) AS new_customer
+	FROM (
+		SELECT 
+			c.customer_unique_id customer,
+			MIN(o.order_purchase_timestamp) AS first_transaction
+		FROM orders_dataset AS o
+		JOIN customers_dataset as c
+		ON o.customer_id = c.customer_id
+		GROUP BY 1
+	) as transaction
+	GROUP BY 1
+	ORDER BY 1
+), 
+
+-- Menampilkan jumlah customer yang melakukan pembelian lebih dari satu kali (repeat order) pada masing-masing tahun 
+-- (Hint: Pelanggan yang melakukan repeat order adalah pelanggan yang melakukan order lebih dari 1 kali)
+
+	repeat_order AS (
+	SELECT 
+		year,
+		COUNT(DISTINCT customer) AS repeat_customer
+	FROM (
+		SELECT 
+			DATE_PART('year', o.order_purchase_timestamp) AS year,
+			c.customer_unique_id AS customer,
+			COUNT(order_id) AS total_transaction
+		FROM orders_dataset AS o
+		JOIN customers_dataset AS c
+		ON o.customer_id = c.customer_id
+		GROUP BY 1,2
+		HAVING COUNT(order_id) >1
+		) AS repeat
+	GROUP BY 1
+	ORDER BY 1
+),
+
+-- Menampilkan rata-rata jumlah order yang dilakukan customer untuk masing-masing tahun 
+-- (Hint: Hitung frekuensi order (berapa kali order) untuk masing-masing customer terlebih dahulu)
+	avg_transaction AS (
+		SELECT
+			year,
+			ROUND(AVG(total_transaction), 2) AS average_transaction
+		FROM (
+			SELECT
+				DATE_PART('year', o.order_purchase_timestamp) AS year,
+				c.customer_unique_id AS customer,
+				COUNT(order_id) as total_transaction
+			FROM
+				orders_dataset AS o 
+			JOIN customers_dataset AS c
+				ON o.customer_id = c.customer_id
+			GROUP BY 1,2
+		) transactions
+		GROUP BY 1
+		ORDER BY 1
+	)
+	
+-- JOIN ALL CTE TABLES
+SELECT
+	mau.year as year,
+	avg_mau,
+	new_customer,
+	repeat_customer,
+	average_transaction
+FROM monthly_active_user AS mau
+JOIN new_customers AS nc
+ON mau.year = nc.year
+JOIN repeat_order AS ro
+ON mau.year = ro.year
+JOIN avg_transaction AS tr
+ON mau.year = tr.year;
